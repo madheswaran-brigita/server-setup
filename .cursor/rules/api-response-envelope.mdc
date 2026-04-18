@@ -1,46 +1,84 @@
 ---
-description: JSON API response envelope — shape, statuses, and helpers
+description: Standard JSON API responses — success, validation/failure, server error
 globs: src/**/*.js
 alwaysApply: false
 ---
 
-# API response envelope
+# API response standard
 
-All JSON bodies returned by this Express app use one envelope. **Canonical implementation:** `src/response.js`. When you change the pattern, update that module and keep this rule in sync.
+Every JSON response from this API uses the same object shape. **Implementation:** `src/response.js`. Keep this rule and that file aligned.
 
-## Shape
+## Shape (always these four keys)
 
-Every response is a single object with:
+| Key | Type | Success | Failure / error |
+|-----|------|---------|------------------|
+| `success` | boolean | `true` | `false` |
+| `message` | string | Human summary | Human summary (e.g. validation text or generic server line) |
+| `data` | object or `null` | Payload object (may be empty `{}`) | Usually `null` for errors |
+| `error` | `null` or object | `null` | Object with at least `code` (string). Optional extra fields allowed. |
 
-- **`id`** — unique string per response (e.g. UUID).
-- **`status`** — one of `success`, `error`, `failed`.
-- **`message`** — short human-readable string.
-- **`data`** — payload (object, array, etc.) or `null`.
+Do not add parallel top-level fields like `ok`, `status`, or `id` for public JSON unless this standard is explicitly revised.
 
-## Helpers
+## Success
 
-Import from `./response` (or `../response` from nested files under `src/`):
+```json
+{
+  "success": true,
+  "message": "Price added successfully",
+  "data": { "price": 100 },
+  "error": null
+}
+```
 
-| Helper | `status` value | Typical HTTP |
-|--------|----------------|---------------|
-| `success(message, data?)` | `success` | 2xx |
-| `error(message, data?)` | `error` | 5xx (or app errors in global handler) |
-| `failed(message, data?)` | `failed` | 4xx / not found |
+- Use **`success(message, data?)`** from `response.js`. Default `data` is `{}` when omitted.
 
-Use `res.json(...)` with these helpers; do not hand-roll ad hoc `{ ok: true }` shapes for public JSON APIs.
+## Validation and other client-side failures
 
-## Errors
+HTTP status is typically **4xx** (400, 404, 422, etc.). Body:
 
-- **404 / unknown route:** `failed` + appropriate status code.
-- **Unhandled errors:** express error middleware should respond with `error` and set `err.status` when the error is intentional (integer), otherwise default to 500.
+```json
+{
+  "success": false,
+  "message": "Price is required",
+  "data": null,
+  "error": { "code": "VALIDATION_ERROR" }
+}
+```
 
-## Examples
+- Use **`failure(message, error, data?)`** where `error` is a string code or `{ code, ... }`.
+- Prefer stable **`code`** values: `VALIDATION_ERROR`, `NOT_FOUND`, `DATABASE_UNAVAILABLE`, etc.
+
+## Server errors
+
+HTTP **5xx** (or guarded 503). Body:
+
+```json
+{
+  "success": false,
+  "message": "Internal server error",
+  "data": null,
+  "error": { "code": "SERVER_ERROR" }
+}
+```
+
+- Global error handler should use **`failure("Internal server error", "SERVER_ERROR")`** in production; in development you may surface `err.message` in `message` only when safe.
+
+## Ending the HTTP response (Express)
+
+- **`res.json(...)`** serializes JSON and **finishes** the response. You do **not** need **`res.end()`** after it.
+- Use **`return res.json(...)`** (or **`return res.status(...).json(...)`**) so the handler **stops** and you never send a second body by mistake (especially after **`await`**).
+- In error middleware, if **`res.headersSent`** is already true, **do not** call `res.json` again — delegate with **`next(err)`** or log only.
+
+## Code examples
 
 ```js
-// ✅ GOOD
-res.json(success("Created", { userId: "..." }));
-res.status(400).json(failed("Validation failed", { fields: ["email"] }));
+const { success, failure } = require("./response");
 
-// ❌ BAD — bypasses envelope
+// ✅ GOOD
+res.json(success("Price added successfully", { price: 100 }));
+res.status(400).json(failure("Price is required", "VALIDATION_ERROR"));
+res.status(404).json(failure("Not found", "NOT_FOUND"));
+
+// ❌ BAD — ad hoc shapes
 res.json({ ok: true, result: rows });
 ```

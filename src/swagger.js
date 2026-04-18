@@ -9,7 +9,7 @@ const options = {
       title: "Server setup API",
       version: "1.0.0",
       description:
-        "Express JSON API. Responses use a shared envelope: `id`, `status` (`success` | `error` | `failed`), `message`, `data`.",
+        "Express JSON API. All bodies use `{ success, message, data, error }` (see ApiResponse schema).",
     },
     servers: [{ url: "/", description: "This host" }],
     tags: [
@@ -18,23 +18,34 @@ const options = {
     ],
     components: {
       schemas: {
-        ApiEnvelope: {
+        ApiErrorBody: {
           type: "object",
-          required: ["id", "status", "message", "data"],
+          required: ["code"],
           properties: {
-            id: {
+            code: {
               type: "string",
-              format: "uuid",
-              description: "Unique id for this response",
+              example: "VALIDATION_ERROR",
+              description: "Stable machine-readable code",
             },
-            status: {
-              type: "string",
-              enum: ["success", "error", "failed"],
-            },
+          },
+          additionalProperties: true,
+        },
+        ApiResponse: {
+          type: "object",
+          required: ["success", "message", "data", "error"],
+          properties: {
+            success: { type: "boolean" },
             message: { type: "string" },
             data: {
-              description: "Payload or null",
               nullable: true,
+              oneOf: [
+                { type: "object", additionalProperties: true },
+                { type: "array" },
+              ],
+            },
+            error: {
+              nullable: true,
+              oneOf: [{ type: "null" }, { $ref: "#/components/schemas/ApiErrorBody" }],
             },
           },
         },

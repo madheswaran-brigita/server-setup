@@ -4,7 +4,7 @@
 require("dotenv").config();
 const express = require("express");
 const { pool } = require("./db");
-const { success, failed, error } = require("./response");
+const { success, failure } = require("./response");
 const { setupSwagger } = require("./swagger");
 
 const app = express();
@@ -23,7 +23,7 @@ app.use(express.json());
  *         content:
  *           application/json:
  *             schema:
- *               $ref: '#/components/schemas/ApiEnvelope'
+ *               $ref: '#/components/schemas/ApiResponse'
  */
 app.get("/", (_req, res) =>
   res.json(success("Backend server is running", { ok: true }))
@@ -42,18 +42,18 @@ app.get("/", (_req, res) =>
  *         content:
  *           application/json:
  *             schema:
- *               $ref: '#/components/schemas/ApiEnvelope'
+ *               $ref: '#/components/schemas/ApiResponse'
  *       503:
  *         description: Database unreachable
  *         content:
  *           application/json:
  *             schema:
- *               $ref: '#/components/schemas/ApiEnvelope'
+ *               $ref: '#/components/schemas/ApiResponse'
  */
 app.get("/health", async (_req, res) => {
   try {
     const { rows } = await pool.query("SELECT NOW() AS server_time");
-    res.json(
+    return res.json(
       success("Service is healthy", {
         healthy: true,
         database: "connected",
@@ -61,24 +61,43 @@ app.get("/health", async (_req, res) => {
       })
     );
   } catch (err) {
-    res.status(503).json(
-      failed("Database unreachable", {
-        detail:
-          process.env.NODE_ENV === "development" ? String(err.message) : undefined,
-      })
+    return res.status(503).json(
+      failure(
+        "Database unreachable",
+        {
+          code: "DATABASE_UNAVAILABLE",
+          ...(process.env.NODE_ENV === "development"
+            ? { detail: String(err.message) }
+            : {}),
+        },
+        null
+      )
     );
   }
 });
 
 setupSwagger(app);
 
-app.use((_req, res) => res.status(404).json(failed("Not found", null)));
-
-app.use((err, _req, res, _next) =>
-  res
-    .status(err.status && Number.isInteger(err.status) ? err.status : 500)
-    .json(error(err.message || "Internal server error", null))
+app.use((_req, res) =>
+  res.status(404).json(failure("Not found", "NOT_FOUND", null))
 );
+
+app.use((err, _req, res, next) => {
+  if (res.headersSent) {
+    return next(err);
+  }
+  return res
+    .status(err.status && Number.isInteger(err.status) ? err.status : 500)
+    .json(
+      failure(
+        process.env.NODE_ENV === "development"
+          ? err.message || "Internal server error"
+          : "Internal server error",
+        "SERVER_ERROR",
+        null
+      )
+    );
+});
 
 const PORT = process.env.PORT || 3000;
 const server = app.listen(PORT, () =>

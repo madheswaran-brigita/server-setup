@@ -1,30 +1,33 @@
-const { randomUUID } = require("crypto");
-
 /**
- * Standard API envelope: status, message, data, and a unique id per payload.
- * @param {"success"|"error"|"failed"} status
+ * Standard API body: { success, message, data, error }
+ * Callers use `return res.json(success(...))` — Express ends the response on `res.json`;
+ * no `res.end()` is required. Returning stops your handler from sending twice.
  * @param {string} message
- * @param {unknown} [data]
+ * @param {Record<string, unknown>|null} [data] defaults to {}
  */
-function envelope(status, message, data = null) {
+function success(message, data = {}) {
   return {
-    id: randomUUID(),
-    status,
+    success: true,
     message,
-    data,
+    data: data == null ? {} : data,
+    error: null,
   };
 }
 
-function success(message, data = null) {
-  return envelope("success", message, data);
+/**
+ * @param {string} message
+ * @param {string | { code: string, [key: string]: unknown }} error string code or { code, ... }
+ * @param {null | Record<string, unknown>} [data] usually null on errors
+ */
+function failure(message, error, data = null) {
+  const errorObj =
+    typeof error === "string" ? { code: error } : { ...error };
+  return {
+    success: false,
+    message,
+    data,
+    error: errorObj,
+  };
 }
 
-function error(message, data = null) {
-  return envelope("error", message, data);
-}
-
-function failed(message, data = null) {
-  return envelope("failed", message, data);
-}
-
-module.exports = { envelope, success, error, failed };
+module.exports = { success, failure };
