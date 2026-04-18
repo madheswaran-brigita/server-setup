@@ -1,0 +1,19 @@
+{
+  "name": "server-setup-backend",
+  "version": "1.0.0",
+  "description": "Initial Node.js backend server",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "node --watch src/server.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "express": "^4.21.2"
+  }
+}
