@@ -1,0 +1,46 @@
+---
+description: JSON API response envelope — shape, statuses, and helpers
+globs: src/**/*.js
+alwaysApply: false
+---
+
+# API response envelope
+
+All JSON bodies returned by this Express app use one envelope. **Canonical implementation:** `src/response.js`. When you change the pattern, update that module and keep this rule in sync.
+
+## Shape
+
+Every response is a single object with:
+
+- **`id`** — unique string per response (e.g. UUID).
+- **`status`** — one of `success`, `error`, `failed`.
+- **`message`** — short human-readable string.
+- **`data`** — payload (object, array, etc.) or `null`.
+
+## Helpers
+
+Import from `./response` (or `../response` from nested files under `src/`):
+
+| Helper | `status` value | Typical HTTP |
+|--------|----------------|---------------|
+| `success(message, data?)` | `success` | 2xx |
+| `error(message, data?)` | `error` | 5xx (or app errors in global handler) |
+| `failed(message, data?)` | `failed` | 4xx / not found |
+
+Use `res.json(...)` with these helpers; do not hand-roll ad hoc `{ ok: true }` shapes for public JSON APIs.
+
+## Errors
+
+- **404 / unknown route:** `failed` + appropriate status code.
+- **Unhandled errors:** express error middleware should respond with `error` and set `err.status` when the error is intentional (integer), otherwise default to 500.
+
+## Examples
+
+```js
+// ✅ GOOD
+res.json(success("Created", { userId: "..." }));
+res.status(400).json(failed("Validation failed", { fields: ["email"] }));
+
+// ❌ BAD — bypasses envelope
+res.json({ ok: true, result: rows });
+```
